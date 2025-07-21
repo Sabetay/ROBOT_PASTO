@@ -1,3 +1,5 @@
+# Este codigo detecta los puntos clave de un video usando el detector ORB de Open CV.
+
 import cv2
 # Importa la biblioteca OpenCV, que se usa para procesamiento de imágenes y visión por computadora.
 
