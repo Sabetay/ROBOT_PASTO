@@ -16,6 +16,7 @@ def emparejar_descriptores(desc1, desc2):
     matches = bf.match(desc1, desc2)
     return sorted(matches, key=lambda x: x.distance)
 
+
 def obtener_puntos(kp1, kp2, matches):
     """Obtiene puntos clave emparejados."""
     pts1 = np.float32([kp1[m.queryIdx].pt for m in matches])
