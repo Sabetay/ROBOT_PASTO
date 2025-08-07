@@ -2,102 +2,87 @@ import cv2
 import numpy as np
 import open3d as o3d
 
-# Parámetros de la cámara (debes calibrar la tuya para valores precisos)
-focal = 700  # píxeles, aproximado
-pp = (320, 240)  # punto principal (cx, cy), ejemplo
+# === Configuración de cámara ficticia ===
+K = np.array([[700, 0, 320],
+              [0, 700, 240],
+              [0,   0,   1]])
 
-def extraer_kp_desc(img, orb):
-    """Extrae keypoints y descriptores usando ORB."""
-    return orb.detectAndCompute(img, None)
-
-def emparejar_descriptores(desc1, desc2):
-    """Empareja descriptores usando BFMatcher."""
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    matches = bf.match(desc1, desc2)
-    return sorted(matches, key=lambda x: x.distance)
-
-
-def obtener_puntos(kp1, kp2, matches):
-    """Obtiene puntos clave emparejados."""
-    pts1 = np.float32([kp1[m.queryIdx].pt for m in matches])
-    pts2 = np.float32([kp2[m.trainIdx].pt for m in matches])
-    return pts1, pts2
-
-# Inicialización de captura de video y ORB
+# === Inicialización ===
 cap = cv2.VideoCapture("video.mp4")
-if not cap.isOpened():
-    print("No se pudo abrir el video. Verifica la ruta o el archivo.")
-    exit()
-
 orb = cv2.ORB_create(2000)
+bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
-# Leer el primer cuadro
+# Variables de SLAM
+poses = [np.eye(4)]
+puntos_3d = []
+
+# Visualizador Open3D
+vis = o3d.visualization.Visualizer()
+vis.create_window(window_name="Reconstrucción 3D")
+cloud = o3d.geometry.PointCloud()
+vis.add_geometry(cloud)
+
+def actualizar_nube(puntos_3d):
+    cloud.points = o3d.utility.Vector3dVector(np.array(puntos_3d))
+    vis.update_geometry(cloud)
+    vis.poll_events()
+    vis.update_renderer()
+
+# === Bucle principal ===
 ret, frame_anterior = cap.read()
-if not ret:
-    print("No se pudo leer el primer cuadro del video.")
-    exit()
-
 gris_anterior = cv2.cvtColor(frame_anterior, cv2.COLOR_BGR2GRAY)
-kp1, desc1 = extraer_kp_desc(gris_anterior, orb)
+kp1, des1 = orb.detectAndCompute(gris_anterior, None)
 
-# Inicialización de variables para SLAM
-trayectoria = [np.array([0, 0, 0])]
-R_total = np.eye(3)
-t_total = np.zeros((3, 1))
-
-while cap.isOpened():
+while True:
     ret, frame = cap.read()
     if not ret:
-        print("Fin del video.")
         break
 
     gris = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    kp2, desc2 = extraer_kp_desc(gris, orb)
-
-    # Validación de descriptores
-    if desc2 is None or desc1 is None or len(desc2) < 10 or len(desc1) < 10:
-        desc1, kp1 = desc2, kp2
+    kp2, des2 = orb.detectAndCompute(gris, None)
+    if des1 is None or des2 is None:
         continue
 
-    matches = emparejar_descriptores(desc1, desc2)
-    if len(matches) < 8:
-        desc1, kp1 = desc2, kp2
-        continue
+    matches = bf.match(des1, des2)
+    matches = sorted(matches, key=lambda x: x.distance)[:100]
 
-    pts1, pts2 = obtener_puntos(kp1, kp2, matches)
-    E, mask = cv2.findEssentialMat(pts2, pts1, focal=focal, pp=pp, method=cv2.RANSAC, prob=0.999, threshold=1.0)
-    if E is None:
-        desc1, kp1 = desc2, kp2
-        continue
+    pts1 = np.float32([kp1[m.queryIdx].pt for m in matches])
+    pts2 = np.float32([kp2[m.trainIdx].pt for m in matches])
 
-    _, R, t, mask_pose = cv2.recoverPose(E, pts2, pts1, focal=focal, pp=pp)
-    t_total += R_total.dot(t)
-    R_total = R.dot(R_total)
-    trayectoria.append(t_total.flatten())
+    E, mask = cv2.findEssentialMat(pts2, pts1, K, method=cv2.RANSAC, prob=0.999, threshold=1.0)
+    _, R, t, mask_pose = cv2.recoverPose(E, pts2, pts1, K)
 
-    desc1, kp1 = desc2, kp2
+    nueva_pose = np.eye(4)
+    nueva_pose[:3, :3] = R
+    nueva_pose[:3, 3] = t[:, 0]
+    poses.append(poses[-1] @ np.linalg.inv(nueva_pose))
 
-    # Dibujo de coincidencias para visualizar en tiempo real
-    num_matches = min(len(matches), 50)
-    frame_matches = cv2.drawMatches(gris_anterior, kp1, gris, kp2, matches[:num_matches], None, flags=2)
-    cv2.imshow("SLAM - Coincidencias ORB", frame_matches)
+    for i, m in enumerate(matches):
+        if mask_pose[i] == 0:
+            continue
+        z = 1.0
+        x = (pts2[i][0] - K[0, 2]) * z / K[0, 0]
+        y = (pts2[i][1] - K[1, 2]) * z / K[1, 1]
+        punto = np.array([x, y, z, 1.0])
+        mundo = poses[-1] @ punto
+        puntos_3d.append(mundo[:3])
 
+    actualizar_nube(puntos_3d)
+
+    img_matches = cv2.drawMatches(gris_anterior, kp1, gris, kp2, matches, None, flags=2)
+    cv2.imshow("Video con puntos", img_matches)
     if cv2.waitKey(1) & 0xFF == ord('q'):
-        print("Interrupción manual.")
         break
 
+    kp1, des1 = kp2, des2
+    gris_anterior = gris
+
 cap.release()
-trayectoria = np.array(trayectoria)
-
-# Guardar la trayectoria estimada
-np.save("trayectoria_slam.npy", trayectoria)
-
-# Visualización 3D
-pts = o3d.utility.Vector3dVector(trayectoria)
-nube = o3d.geometry.PointCloud()
-nube.points = pts
-nube.paint_uniform_color([1.0, 0.0, 0.0])  # rojo
-
-o3d.visualization.draw_geometries([nube], window_name="Trayectoria SLAM")
-
 cv2.destroyAllWindows()
+vis.destroy_window()
+
+# Guardar nube
+nube_final = o3d.geometry.PointCloud()
+nube_final.points = o3d.utility.Vector3dVector(np.array(puntos_3d))
+o3d.io.write_point_cloud("point_cloud.ply", nube_final)
+print(" Nube de puntos guardada en point_cloud.ply")
