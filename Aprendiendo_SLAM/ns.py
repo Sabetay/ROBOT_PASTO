@@ -223,3 +223,18 @@ if len(puntos_3d_acumulados) > 0:
     print("Mapa 3D guardado en triangulated_map.ply (escala arbitraria)")
 else:
     print("No se generaron puntos 3D sólidos.")
+
+
+
+
+""" Matcher KNN + ratio test: más robusto que crossCheck=True para eliminar falsos matches.
+
+findEssentialMat + recoverPose: estima R y t entre frame anterior y actual.
+
+Triangulación: cv2.triangulatePoints(P0,P1,pts0,pts1) devuelve puntos en coordenadas del camera0 (cam del primer frame). Se convierte a 3D y se filtra por profundidad positiva y reproyección.
+
+Poses: guardamos poses para transformar puntos de la cámara local al sistema de coordenadas global (aquí asumimos pose0 = I). La relación entre pose_prev y pose_curr se maneja con T_rel.
+
+Filtrado: se filtran puntos con Z <= 0 y con reproyección mayor que REPROJ_THRESH (px).
+
+Visualización: Open3D actualiza nube en tiempo real; OpenCV muestra el vídeo con matches (inliers)."""
