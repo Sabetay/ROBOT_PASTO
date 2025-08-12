@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="C:\Users\49121059\Documents\GitHub\ROBOT_PASTO\venv"
+VIRTUAL_ENV="C:\Users\49439094\Desktop\ROBOT_PASTO\venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
