@@ -1,16 +1,17 @@
 import RPi.GPIO as GPIO
+import os
 import time
 
 # Modo de numeración de pines
 GPIO.setmode(GPIO.BCM)
 
 # Pines de control para el L298N
-IN1 = 17
-IN2 = 23
-IN3 = 24
-IN4 = 25
-ENA = 5
-ENB = 6
+IN1 = 16 
+IN2 = 28 
+IN3 = 38 
+IN4 = 40 
+ENA = 11 
+ENB = 36 
 
 # Configurar pines como salida
 GPIO.setup([IN1, IN2, IN3, IN4, ENA, ENB], GPIO.OUT)
@@ -23,7 +24,7 @@ pwmB = GPIO.PWM(ENB, 1000)
 pwmA.start(0)
 pwmB.start(0)
 
-def adelante(velocidad=100):
+def adelante(velocidad=100): #100% de veloocidad
     GPIO.output(IN1, GPIO.HIGH)
     GPIO.output(IN2, GPIO.LOW)
     GPIO.output(IN3, GPIO.HIGH)
@@ -31,7 +32,7 @@ def adelante(velocidad=100):
     pwmA.ChangeDutyCycle(velocidad)
     pwmB.ChangeDutyCycle(velocidad)
 
-def atras(velocidad=100):
+def atras(velocidad=100):  #100% de velocidad
     GPIO.output(IN1, GPIO.LOW)
     GPIO.output(IN2, GPIO.HIGH)
     GPIO.output(IN3, GPIO.LOW)
@@ -70,6 +71,10 @@ try:
     frenar()
 
 except KeyboardInterrupt:
+    pwmA.stop()
+    pwmB.stop()
+    GPIO.cleanup()
+    os.system('clean')
     print("Interrumpido por el usuario")
 
 finally:
